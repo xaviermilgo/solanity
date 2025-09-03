@@ -184,7 +184,7 @@ void vanity_run(config &vanity) {
 	}
 
 	for (int i = 0; i < MAX_ITERATIONS; ++i) {
-		printf("Starting iteration %d...\n", i+1); // DEBUG: Check if loop executes
+		// printf("Starting iteration %d...\n", i+1); // DEBUG: Check if loop executes
 		auto start  = std::chrono::high_resolution_clock::now();
 
                 executions_this_iteration=0;
@@ -222,7 +222,7 @@ void vanity_run(config &vanity) {
 	                cudaMemcpy(dev_executions_this_gpu[g], &zero, sizeof(int), cudaMemcpyHostToDevice);		
 
 			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g]); // TEMPORARILY REVERTED: removed entropy params
-			printf("Launched kernel on GPU %d\n", g); // DEBUG: Check kernel launch
+			// printf("Launched kernel on GPU %d\n", g); // DEBUG: Check kernel launch
 
 			// DEBUGGING: Check for CUDA errors after kernel launch
 			cudaError_t kernelError = cudaGetLastError();
@@ -516,8 +516,8 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 			if (match) {
 				found_match = true;
 				atomicAdd(keys_found, 1);
-				// TEMPORARILY RE-ENABLED for debugging
-				printf("GPU %d MATCH %s\n", *gpu, key);
+				// DISABLED to focus on performance measurement
+				// printf("GPU %d MATCH %s\n", *gpu, key);
 				break; // Exit pattern loop immediately on match
 			}
 		}
