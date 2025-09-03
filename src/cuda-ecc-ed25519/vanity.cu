@@ -518,8 +518,8 @@ bool __device__ b58enc_ultrafast(
        	size_t  binsz
 ) {
 	// Specialized for 32-byte input (Solana public keys)
-	// Pre-computed lookup table for maximum speed
-	const char b58_chars[58] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+	// Pre-computed lookup table for maximum speed  
+	const char b58_chars[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 	
 	// For 32-byte input, output is always 44 chars max
 	uint32_t num[11] = {0}; // 32 bytes = 256 bits, need ceil(256/log2(58)) = 44 chars max
