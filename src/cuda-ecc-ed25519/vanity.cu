@@ -184,6 +184,7 @@ void vanity_run(config &vanity) {
 	}
 
 	for (int i = 0; i < MAX_ITERATIONS; ++i) {
+		printf("Starting iteration %d...\n", i+1); // DEBUG: Check if loop executes
 		auto start  = std::chrono::high_resolution_clock::now();
 
                 executions_this_iteration=0;
@@ -221,6 +222,7 @@ void vanity_run(config &vanity) {
 	                cudaMemcpy(dev_executions_this_gpu[g], &zero, sizeof(int), cudaMemcpyHostToDevice);		
 
 			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g], dev_entropy[g], i);
+			printf("Launched kernel on GPU %d\n", g); // DEBUG: Check kernel launch
 
 			// DEBUGGING: Check for CUDA errors after kernel launch
 			cudaError_t kernelError = cudaGetLastError();

@@ -7,8 +7,8 @@
 static int const MAX_ITERATIONS = 1000;  // Reasonable number for testing
 static int const STOP_AFTER_KEYS_FOUND = 100; // Stop after finding more keys for better performance measurement
 
-// Scaled up for performance measurement - better amortization of kernel launch overhead  
-__device__ const int ATTEMPTS_PER_EXECUTION = 1000000; // 1M attempts per execution for performance testing
+// Balanced for performance without timeouts - find optimal balance
+__device__ const int ATTEMPTS_PER_EXECUTION = 200000; // 200K attempts per execution - balance of performance and stability
 
 __device__ const int MAX_PATTERNS = 50; // Support many more patterns
 
