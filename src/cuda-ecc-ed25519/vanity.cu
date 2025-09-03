@@ -258,7 +258,10 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 	// Use shared memory arrays instead of local arrays
 	int* prefix_letter_counts = shared_prefix_counts;
 	
-	atomicAdd(exec_count, 1);
+	// DEBUG: Print thread startup
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		printf("DEBUG: Thread starting, ATTEMPTS_PER_EXECUTION = %d\n", ATTEMPTS_PER_EXECUTION);
+	}
 
 	// OPTIMIZED Local Kernel State - aligned for vectorized access
 	ge_p3 A;
@@ -299,10 +302,25 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 	// Generate Random Key Data
 	sha512_context md;
 
+	// DEBUG: Print before main loop
+	if (threadIdx.x == 0 && blockIdx.x == 0) {
+		printf("DEBUG: Entering main loop with %d attempts\n", ATTEMPTS_PER_EXECUTION);
+	}
+	
 	// ULTRA-VECTORIZED SHA512 OPERATIONS
 	// Using CUDA vector types and operations for maximum parallel throughput
 	// Processing multiple keys simultaneously using SIMD-style operations
 	for (int attempts = 0; attempts < ATTEMPTS_PER_EXECUTION; ++attempts) {
+		
+		// Count each execution attempt (moved inside loop)
+		if (attempts == 0) {
+			atomicAdd(exec_count, 1);
+		}
+		
+		// DEBUG: Print first few attempts
+		if (threadIdx.x == 0 && blockIdx.x == 0 && attempts < 3) {
+			printf("DEBUG: Attempt %d starting\n", attempts);
+		}
 		// VECTORIZED sha512_init using uint2 for faster initialization
 		md.curlen   = 0;
 		md.length   = 0;
@@ -424,6 +442,11 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 
 		size_t keysize = 256;
 		b58enc(key, &keysize, publick, 32);
+
+		// DEBUG: Print key generation
+		if (threadIdx.x == 0 && blockIdx.x == 0 && attempts < 3) {
+			printf("DEBUG: Generated key %s for attempt %d\n", key, attempts);
+		}
 
 		// Code Until here runs at 22_000_000H/s. b58enc badly needs optimization.
 
