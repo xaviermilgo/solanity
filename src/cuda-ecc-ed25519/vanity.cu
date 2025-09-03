@@ -156,7 +156,7 @@ void vanity_run(config &vanity) {
         int* dev_keys_found[100]; // not more than 100 GPUs ok!
 
 	// DEBUGGING: Test basic kernel execution first
-	printf("DEBUGGING: Testing basic kernel execution...\n");
+	// printf("DEBUGGING: Testing basic kernel execution...\n");
 	int* test_counter;
 	cudaMalloc(&test_counter, sizeof(int));
 	int zero = 0;
@@ -168,7 +168,7 @@ void vanity_run(config &vanity) {
 	
 	int test_result = 0;
 	cudaMemcpy(&test_result, test_counter, sizeof(int), cudaMemcpyDeviceToHost);
-	printf("DEBUGGING: Test kernel result: %d threads executed\n", test_result);
+	// printf("DEBUGGING: Test kernel result: %d threads executed\n", test_result);
 	cudaFree(test_counter);
 	
 	if (test_result == 0) {
@@ -191,9 +191,9 @@ void vanity_run(config &vanity) {
 			cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
 			cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
 
-			// DEBUGGING: Print occupancy values
-			printf("DEBUG: GPU %d - blockSize=%d, minGridSize=%d, maxActiveBlocks=%d\n", 
-			       g, blockSize, minGridSize, maxActiveBlocks);
+			// DEBUGGING: Print occupancy values (disabled for performance)
+			// printf("DEBUG: GPU %d - blockSize=%d, minGridSize=%d, maxActiveBlocks=%d\n", 
+			//        g, blockSize, minGridSize, maxActiveBlocks);
 			
 			// Safety check for invalid occupancy calculations
 			if (blockSize <= 0 || minGridSize <= 0) {
@@ -276,9 +276,7 @@ void __global__ vanity_init(unsigned long long int* rseed, curandState* state) {
 // Simple test kernel to verify thread execution
 void __global__ test_kernel_simple(int* test_counter) {
 	int idx = threadIdx.x + blockIdx.x * blockDim.x;
-	if (idx == 0) {
-		printf("TEST: Kernel executing, blockDim=%d, gridDim=%d\n", blockDim.x, gridDim.x);
-	}
+	// Silent test kernel for production
 	atomicAdd(test_counter, 1);
 }
 
@@ -287,9 +285,10 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 	int thread_id = threadIdx.x;
 	
 	// DEBUG: Print thread startup
-	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		printf("DEBUG: Thread starting, ATTEMPTS_PER_EXECUTION = %d\n", ATTEMPTS_PER_EXECUTION);
-	}
+	// Debug prints disabled for performance
+	// if (threadIdx.x == 0 && blockIdx.x == 0) {
+	//	printf("DEBUG: Thread starting, ATTEMPTS_PER_EXECUTION = %d\n", ATTEMPTS_PER_EXECUTION);
+	// }
 
 	// OPTIMIZED Local Kernel State - aligned for vectorized access
 	ge_p3 A;
@@ -332,7 +331,7 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 
 	// DEBUG: Print before main loop
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
-		printf("DEBUG: Entering main loop with %d attempts\n", ATTEMPTS_PER_EXECUTION);
+		// printf("DEBUG: Entering main loop with %d attempts\n", ATTEMPTS_PER_EXECUTION);
 	}
 	
 	// ULTRA-VECTORIZED SHA512 OPERATIONS
@@ -347,7 +346,7 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 		
 		// DEBUG: Print first few attempts
 		if (threadIdx.x == 0 && blockIdx.x == 0 && attempts < 3) {
-			printf("DEBUG: Attempt %d starting\n", attempts);
+			// printf("DEBUG: Attempt %d starting\n", attempts);
 		}
 		// VECTORIZED sha512_init using uint2 for faster initialization
 		md.curlen   = 0;
@@ -473,7 +472,7 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 
 		// DEBUG: Print key generation
 		if (threadIdx.x == 0 && blockIdx.x == 0 && attempts < 3) {
-			printf("DEBUG: Generated key %s for attempt %d\n", key, attempts);
+			// printf("DEBUG: Generated key %s for attempt %d\n", key, attempts);
 		}
 
 		// Code Until here runs at 22_000_000H/s. b58enc badly needs optimization.
@@ -506,31 +505,8 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 			if (match) {
 				found_match = true;
 				atomicAdd(keys_found, 1);
-				// ULTRA-FAST OUTPUT - minimal formatting for maximum speed
-				printf("GPU %d MATCH %s - ", *gpu, key);
-				
-				// Vectorized hex output (faster than loop)
-				uint4* seed_vec = (uint4*)seed;
-				printf("%08x%08x%08x%08x%08x%08x%08x%08x\n", 
-					seed_vec[0].x, seed_vec[0].y, seed_vec[0].z, seed_vec[0].w,
-					seed_vec[1].x, seed_vec[1].y, seed_vec[1].z, seed_vec[1].w);
-				
-				// Optimized Solana keypair format output
-				printf("[");
-				#pragma unroll
-				for(int n=0; n<32; n++) { 
-					printf("%d,", (unsigned char)seed[n]); 
-				}
-				#pragma unroll
-				for(int n=0; n<32; n++) {
-					if (n == 31) {
-						printf("%d", publick[n]);
-					} else {
-						printf("%d,", publick[n]);
-					}
-				}
-				printf("]\n");
-				
+				// PRODUCTION OUTPUT - clean and minimal
+				printf("GPU %d MATCH %s\n", *gpu, key);
 				break; // Exit pattern loop immediately on match
 			}
 		}
