@@ -206,9 +206,20 @@ void vanity_run(config &vanity) {
                 	cudaMemcpy( dev_g, &g, sizeof(int), cudaMemcpyHostToDevice ); 
 
 	                cudaMalloc((void**)&dev_keys_found[g], sizeof(int));		
-	                cudaMalloc((void**)&dev_executions_this_gpu[g], sizeof(int));		
+	                cudaMalloc((void**)&dev_executions_this_gpu[g], sizeof(int));
+	                
+	                // Initialize memory to zero to prevent overflow
+	                int zero = 0;
+	                cudaMemcpy(dev_keys_found[g], &zero, sizeof(int), cudaMemcpyHostToDevice);
+	                cudaMemcpy(dev_executions_this_gpu[g], &zero, sizeof(int), cudaMemcpyHostToDevice);		
 
 			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g]);
+
+			// DEBUGGING: Check for CUDA errors after kernel launch
+			cudaError_t kernelError = cudaGetLastError();
+			if (kernelError != cudaSuccess) {
+				printf("ERROR: Kernel launch failed on GPU %d: %s\n", g, cudaGetErrorString(kernelError));
+			}
 
 		}
 
@@ -217,7 +228,10 @@ void vanity_run(config &vanity) {
 		// just sync with the last `i`, but they should all complete
 		// roughly at the same time and worst case it will just stack
 		// up kernels in the queue to run.
-		cudaDeviceSynchronize();
+		cudaError_t syncError = cudaDeviceSynchronize();
+		if (syncError != cudaSuccess) {
+			printf("ERROR: Device synchronization failed: %s\n", cudaGetErrorString(syncError));
+		}
 		auto finish = std::chrono::high_resolution_clock::now();
 
 		for (int g = 0; g < gpuCount; ++g) {
@@ -271,33 +285,6 @@ void __global__ test_kernel_simple(int* test_counter) {
 void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* exec_count) {
 	int id = threadIdx.x + (blockIdx.x * blockDim.x);
 	int thread_id = threadIdx.x;
-	
-	// COALESCED MEMORY ACCESS OPTIMIZATION
-	// Use shared memory for frequently accessed data to improve memory throughput
-	
-	__shared__ int shared_prefix_counts[MAX_PATTERNS];
-	__shared__ char shared_prefixes[MAX_PATTERNS][16]; // Max 16 chars per prefix
-	
-	// Coalesced loading of prefix data - each thread loads one element
-	if (thread_id < MAX_PATTERNS) {
-		// Calculate prefix length and store in shared memory
-		int letter_count = 0;
-		const char* prefix = prefixes[thread_id];
-		for(; prefix[letter_count] != 0 && letter_count < 15; letter_count++);
-		shared_prefix_counts[thread_id] = letter_count;
-		
-		// Copy prefix to shared memory with coalesced access
-		#pragma unroll
-		for (int i = 0; i < 16; i++) {
-			shared_prefixes[thread_id][i] = (i < letter_count) ? prefix[i] : 0;
-		}
-	}
-	
-	// Synchronize to ensure all threads have loaded shared data
-	__syncthreads();
-	
-	// Use shared memory arrays instead of local arrays
-	int* prefix_letter_counts = shared_prefix_counts;
 	
 	// DEBUG: Print thread startup
 	if (threadIdx.x == 0 && blockIdx.x == 0) {
@@ -498,33 +485,26 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 		// so it might make sense to write a new parallel kernel to do
 		// this.
 
-		// BRANCHLESS PATTERN MATCHING using vectorized comparisons
-		// Process multiple patterns simultaneously to eliminate branching
+		// SIMPLIFIED PATTERN MATCHING - remove complex shared memory optimizations
+		// Just do simple string comparisons for now to get kernel working
 		
-		// Convert first 8 characters of key to 64-bit integer for fast comparison
-		uint64_t key_prefix = *((uint64_t*)key);
-		
-		// Pre-computed pattern lookup table (compile-time constants)
 		bool found_match = false;
 		
-		// OPTIMIZED PATTERN MATCHING using shared memory and vectorized ops
-		#pragma unroll
+		// Simple pattern matching loop
 		for (int i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); ++i) {
-			// Fast string comparison using bit manipulation
-			uint64_t pattern = 0;
-			int len = shared_prefix_counts[i];
+			const char* pattern = prefixes[i];
 			
-			// Use shared memory data for faster access
-			memcpy(&pattern, shared_prefixes[i], len);
-			
-			// Mask comparison (branchless check) 
-			uint64_t mask = (1ULL << (len * 8)) - 1;
-			bool match = ((key_prefix & mask) == (pattern & mask));
-			
-			// Branchless accumulator 
-			found_match |= match;
+			// Simple character-by-character comparison
+			bool match = true;
+			for (int j = 0; pattern[j] != 0 && j < 8; j++) {
+				if (key[j] != pattern[j]) {
+					match = false;
+					break;
+				}
+			}
 			
 			if (match) {
+				found_match = true;
 				atomicAdd(keys_found, 1);
 				// ULTRA-FAST OUTPUT - minimal formatting for maximum speed
 				printf("GPU %d MATCH %s - ", *gpu, key);

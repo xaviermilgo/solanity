@@ -123,20 +123,25 @@ make clean && make -j$(nproc)
 timeout 30 bash -c 'LD_LIBRARY_PATH=./src/release ./src/release/cuda_ed25519_vanity'
 ```
 
-### Current Debug Status (✅ FIXED)
+### Current Debug Status (🔍 ROOT CAUSE IDENTIFIED)
 
-**Fixed Issues**:
-1. **Execution Counter**: Moved `atomicAdd(exec_count, 1)` inside the main loop (vanity.cu:317)
-2. **Debug Prints Added**: 
-   - Thread startup debugging (vanity.cu:262)
-   - Main loop entry (vanity.cu:306)
-   - Individual attempt tracking (vanity.cu:321)
-   - Key generation confirmation (vanity.cu:447)
+**✅ Identified Issues**:
+1. **Complex Kernel Resource Exhaustion**: vanity_scan kernel uses 197 registers + 1000 bytes shared memory
+2. **First Iteration Success**: Occupancy calculation works initially (blockSize=256, minGridSize=82)
+3. **Subsequent Failures**: Occupancy calculations return 0 after first kernel execution
+4. **CUDA Errors**: Kernel execution fails after first iteration, causing invalid launches
 
-**Root Cause Found**: 
-- `atomicAdd(exec_count, 1)` was called only once per thread before the main loop
-- Now properly increments execution counter inside the attempts loop
-- Added comprehensive debug logging to verify execution flow
+**🔧 Debug Fixes Applied**:
+1. **CUDA Error Checking**: Added error checking after kernel launch and synchronization
+2. **Memory Initialization**: Zero-initialize device memory to prevent overflow readings
+3. **Kernel Simplification**: Removed complex shared memory optimizations that exhausted resources
+4. **Simple Pattern Matching**: Replaced vectorized pattern matching with basic string comparison
+
+**Evidence Found**:
+- ✅ Basic test kernel works (32 threads executed successfully)  
+- ✅ First iteration launches (valid occupancy: blockSize=256, minGridSize=82, maxActiveBlocks=1)
+- ❌ All subsequent iterations fail (invalid occupancy: blockSize=0, minGridSize=0, maxActiveBlocks=0)
+- ❌ Massive overflow numbers indicate uninitialized memory reads before fix
 
 ### Expected Debug Output
 ```
@@ -149,11 +154,19 @@ DEBUG: Generated key [base58_key] for attempt 1
 [... execution continues ...]
 ```
 
-### Next Steps After Fix
-1. **Verify Execution**: Should see non-zero attempts per iteration
-2. **Performance Testing**: Measure actual keys/second vs 22M baseline
-3. **Remove Debug Prints**: Once confirmed working, remove debug output for max performance
-4. **Scale Up**: Increase `ATTEMPTS_PER_EXECUTION` for higher throughput
+### Next Steps 
+1. **Test Simplified Kernel**: Verify execution with reduced resource usage
+2. **CUDA Error Analysis**: Check for specific error messages after kernel execution
+3. **Performance Baseline**: Measure simplified kernel performance vs original
+4. **Gradual Re-optimization**: Add back optimizations one by one once basic execution works
+
+### Technical Root Cause
+The ultra-optimizations created a kernel that exceeded RTX 3090 resource limits:
+- **197 registers per thread** (likely exceeds optimal occupancy)
+- **1000 bytes shared memory** (MAX_PATTERNS * 16 + MAX_PATTERNS * 4 = 50*20 = 1000 bytes)
+- **Complex vectorized operations** (uint2/uint4 operations, complex bit manipulation)
+
+When the first kernel execution fails internally, subsequent `cudaOccupancyMaxPotentialBlockSize` calls return 0, preventing further kernel launches. The simplified kernel should use far fewer resources and execute successfully.
 
 ## Performance Targets
 
