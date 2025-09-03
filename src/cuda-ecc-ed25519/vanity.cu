@@ -36,6 +36,7 @@ void            vanity_setup(config& vanity);
 void            vanity_run(config& vanity);
 void __global__ vanity_init(unsigned long long int* seed, curandState* state);
 void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* execution_count);
+void __global__ test_kernel_simple(int* test_counter);
 bool __device__ b58enc(char* b58, size_t* b58sz, uint8_t* data, size_t binsz);
 
 /* -- Entry Point ----------------------------------------------------------- */
@@ -154,6 +155,27 @@ void vanity_run(config &vanity) {
         int  keys_found_this_iteration;
         int* dev_keys_found[100]; // not more than 100 GPUs ok!
 
+	// DEBUGGING: Test basic kernel execution first
+	printf("DEBUGGING: Testing basic kernel execution...\n");
+	int* test_counter;
+	cudaMalloc(&test_counter, sizeof(int));
+	int zero = 0;
+	cudaMemcpy(test_counter, &zero, sizeof(int), cudaMemcpyHostToDevice);
+	
+	// Launch simple test kernel with minimal configuration
+	test_kernel_simple<<<1, 32>>>(test_counter);
+	cudaDeviceSynchronize();
+	
+	int test_result = 0;
+	cudaMemcpy(&test_result, test_counter, sizeof(int), cudaMemcpyDeviceToHost);
+	printf("DEBUGGING: Test kernel result: %d threads executed\n", test_result);
+	cudaFree(test_counter);
+	
+	if (test_result == 0) {
+		printf("ERROR: Basic kernel execution failed! Kernel threads not running.\n");
+		return;
+	}
+
 	for (int i = 0; i < MAX_ITERATIONS; ++i) {
 		auto start  = std::chrono::high_resolution_clock::now();
 
@@ -168,6 +190,16 @@ void vanity_run(config &vanity) {
 			    maxActiveBlocks = 0;
 			cudaOccupancyMaxPotentialBlockSize(&minGridSize, &blockSize, vanity_scan, 0, 0);
 			cudaOccupancyMaxActiveBlocksPerMultiprocessor(&maxActiveBlocks, vanity_scan, blockSize, 0);
+
+			// DEBUGGING: Print occupancy values
+			printf("DEBUG: GPU %d - blockSize=%d, minGridSize=%d, maxActiveBlocks=%d\n", 
+			       g, blockSize, minGridSize, maxActiveBlocks);
+			
+			// Safety check for invalid occupancy calculations
+			if (blockSize <= 0 || minGridSize <= 0) {
+				printf("ERROR: Invalid occupancy calculation for GPU %d\n", g);
+				continue;
+			}
 
 			int* dev_g;
 	                cudaMalloc((void**)&dev_g, sizeof(int));
@@ -225,6 +257,15 @@ void vanity_run(config &vanity) {
 void __global__ vanity_init(unsigned long long int* rseed, curandState* state) {
 	// NO-OP - we don't use random states anymore for maximum speed
 	// Thread deterministic counters are much faster
+}
+
+// Simple test kernel to verify thread execution
+void __global__ test_kernel_simple(int* test_counter) {
+	int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (idx == 0) {
+		printf("TEST: Kernel executing, blockDim=%d, gridDim=%d\n", blockDim.x, gridDim.x);
+	}
+	atomicAdd(test_counter, 1);
 }
 
 void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* exec_count) {
