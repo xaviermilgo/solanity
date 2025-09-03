@@ -5,10 +5,10 @@
 // NO SECURITY - MAXIMUM SPEED CONFIGURATION
 
 static int const MAX_ITERATIONS = 1000;  // Reasonable number for testing
-static int const STOP_AFTER_KEYS_FOUND = 100; // Stop after finding more keys for better performance measurement
+static int const STOP_AFTER_KEYS_FOUND = 10; // Stop after finding some keys for debugging
 
-// Balanced for performance without timeouts - find optimal balance
-__device__ const int ATTEMPTS_PER_EXECUTION = 200000; // 200K attempts per execution - balance of performance and stability
+// Back to working configuration for debugging
+__device__ const int ATTEMPTS_PER_EXECUTION = 100000; // 100K attempts per execution - known working value
 
 __device__ const int MAX_PATTERNS = 50; // Support many more patterns
 
