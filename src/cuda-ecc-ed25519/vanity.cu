@@ -35,7 +35,7 @@ typedef struct {
 void            vanity_setup(config& vanity);
 void            vanity_run(config& vanity);
 void __global__ vanity_init(unsigned long long int* seed, curandState* state);
-void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* execution_count, unsigned long long int* entropy, int iteration_num);
+void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* execution_count); // TEMPORARILY REVERTED: removed entropy params
 
 // Global device entropy array for all GPUs
 static unsigned long long int* dev_entropy[8]; // Support up to 8 GPUs
@@ -221,7 +221,7 @@ void vanity_run(config &vanity) {
 	                cudaMemcpy(dev_keys_found[g], &zero, sizeof(int), cudaMemcpyHostToDevice);
 	                cudaMemcpy(dev_executions_this_gpu[g], &zero, sizeof(int), cudaMemcpyHostToDevice);		
 
-			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g], dev_entropy[g], i);
+			vanity_scan<<<maxActiveBlocks, blockSize>>>(vanity.states[g], dev_keys_found[g], dev_g, dev_executions_this_gpu[g]); // TEMPORARILY REVERTED: removed entropy params
 			printf("Launched kernel on GPU %d\n", g); // DEBUG: Check kernel launch
 
 			// DEBUGGING: Check for CUDA errors after kernel launch
@@ -289,7 +289,7 @@ void __global__ test_kernel_simple(int* test_counter) {
 	atomicAdd(test_counter, 1);
 }
 
-void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* exec_count, unsigned long long int* entropy, int iteration_num) {
+void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* exec_count) { // TEMPORARILY REVERTED: removed entropy params
 	int id = threadIdx.x + (blockIdx.x * blockDim.x);
 	int thread_id = threadIdx.x;
 	
@@ -320,15 +320,14 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 	#pragma unroll  
 	for(int i = 0; i < 64; i++) key_init[i] = make_uint4(0,0,0,0);
 
-	// FAST SEMI-RANDOM SEED GENERATION  
-	// NO CRYPTOGRAPHIC SECURITY - MAXIMUM SPEED WITH NON-DETERMINISTIC RESULTS
-	// Use thread ID, entropy, and iteration number for semi-random seed generation
+	// TEMPORARILY BACK TO SIMPLE DETERMINISTIC FOR DEBUGGING
+	// Use thread ID for simple deterministic seed generation  
 	uint32_t thread_seed = (blockIdx.x * blockDim.x + threadIdx.x);
 	uint32_t base_counter = thread_seed * 0x12345678UL; // Simple multiplier for spread
 	
-	// Add entropy and iteration to make addresses non-deterministic between runs
-	uint32_t entropy_mix = (uint32_t)(*entropy >> 32) ^ (uint32_t)(*entropy);
-	base_counter += (entropy_mix * iteration_num) + (iteration_num * 0xDEADBEEF);
+	// TEMPORARILY DISABLED: entropy and iteration mixing for debugging
+	// uint32_t entropy_mix = (uint32_t)(*entropy >> 32) ^ (uint32_t)(*entropy);
+	// base_counter += (entropy_mix * iteration_num) + (iteration_num * 0xDEADBEEF);
 	
 	// Generate 32-byte seed using simple counter arithmetic - no random calls
 	for (int i = 0; i < 8; ++i) {
@@ -467,11 +466,10 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 
 		// Code Until here runs at 87_000_000H/s.
 
-		// RE-ENABLED: ed25519 Hash Clamping for valid private keys
-		// Small performance cost but keys become cryptographically valid
-		privatek[0]  &= 248;   // Clear lowest 3 bits  
-		privatek[31] &= 63;    // Clear top 2 bits
-		privatek[31] |= 64;    // Set bit 6
+		// TEMPORARILY DISABLED: ed25519 Hash Clamping for debugging
+		// privatek[0]  &= 248;   // Clear lowest 3 bits  
+		// privatek[31] &= 63;    // Clear top 2 bits
+		// privatek[31] |= 64;    // Set bit 6
 
 		// ed25519 curve multiplication to extract a public key.
 		// Using properly clamped private key - keys are now cryptographically valid
@@ -518,8 +516,8 @@ void __global__ vanity_scan(curandState* state, int* keys_found, int* gpu, int* 
 			if (match) {
 				found_match = true;
 				atomicAdd(keys_found, 1);
-				// PRODUCTION OUTPUT - disabled for performance measurement  
-				// printf("GPU %d MATCH %s\n", *gpu, key);
+				// TEMPORARILY RE-ENABLED for debugging
+				printf("GPU %d MATCH %s\n", *gpu, key);
 				break; // Exit pattern loop immediately on match
 			}
 		}
